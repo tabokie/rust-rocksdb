@@ -2589,6 +2589,11 @@ void crocksdb_options_set_enable_pipelined_write(crocksdb_options_t *opt,
   opt->rep.enable_pipelined_write = v;
 }
 
+void crocksdb_options_set_unordered_write(crocksdb_options_t* opt,
+                                                unsigned char v) {
+  opt->rep.unordered_write = v;
+}
+
 void crocksdb_options_set_allow_concurrent_memtable_write(crocksdb_options_t* opt,
                                                          unsigned char v) {
   opt->rep.allow_concurrent_memtable_write = v;
@@ -5131,7 +5136,7 @@ crocksdb_t* ctitandb_open_column_families(
     crocksdb_column_family_handle_t** column_family_handles, char** errptr) {
   std::vector<TitanCFDescriptor> column_families;
   for (int i = 0; i < num_column_families; i++) {
-    *(ColumnFamilyOptions*)&titan_column_family_options[i]->rep =
+    *((ColumnFamilyOptions*)(&titan_column_family_options[i]->rep)) =
         column_family_options[i]->rep;
     column_families.push_back(
         TitanCFDescriptor(std::string(column_family_names[i]),
@@ -5163,11 +5168,15 @@ crocksdb_t* ctitandb_open_column_families(
 // use ctitandb_t for titan specific functions.
 crocksdb_column_family_handle_t* ctitandb_create_column_family(
     crocksdb_t* db,
+    const crocksdb_options_t* column_family_options,
     const ctitandb_options_t* titan_column_family_options,
     const char* column_family_name,
     char** errptr) {
   // Blindly cast db into TitanDB.
   TitanDB* titan_db = reinterpret_cast<TitanDB*>(db->rep);
+  // Copy the ColumnFamilyOptions part of `column_family_options` into `titan_column_family_options`
+  *((ColumnFamilyOptions*)(&titan_column_family_options->rep)) = 
+      column_family_options->rep;
   crocksdb_column_family_handle_t* handle = new crocksdb_column_family_handle_t;
   SaveError(errptr,
       titan_db->CreateColumnFamily(
@@ -5252,6 +5261,21 @@ void ctitandb_encode_blob_index(const ctitandb_blob_index_t& index,
 void ctitandb_options_set_disable_background_gc(ctitandb_options_t* options,
                                                 unsigned char disable) {
   options->rep.disable_background_gc = disable;
+}
+
+void ctitandb_options_set_level_merge(ctitandb_options_t* options,
+                                                unsigned char enable) {
+  options->rep.level_merge = enable;
+}
+
+void ctitandb_options_set_range_merge(ctitandb_options_t* options,
+                                                unsigned char enable) {
+  options->rep.range_merge = enable;
+}
+
+void ctitandb_options_set_max_sorted_runs(ctitandb_options_t* options,
+                                            int size) {
+  options->rep.max_sorted_runs = size;
 }
 
 void ctitandb_options_set_max_gc_batch_size(ctitandb_options_t* options,

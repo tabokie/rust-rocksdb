@@ -33,8 +33,10 @@ impl TitanDBOptions {
 
     pub fn set_dirname(&mut self, name: &str) {
         let s = CString::new(name).unwrap();
+        // Safety: set_dirname copies the C string into std::string. We
+        // still own s and must drop it.
         unsafe {
-            crocksdb_ffi::ctitandb_options_set_dirname(self.inner, s.into_raw());
+            crocksdb_ffi::ctitandb_options_set_dirname(self.inner, s.as_ptr());
         }
     }
 
@@ -61,6 +63,24 @@ impl TitanDBOptions {
     pub fn set_disable_background_gc(&mut self, disable: bool) {
         unsafe {
             crocksdb_ffi::ctitandb_options_set_disable_background_gc(self.inner, disable);
+        }
+    }
+
+    pub fn set_level_merge(&mut self, enable: bool) {
+        unsafe {
+            crocksdb_ffi::ctitandb_options_set_level_merge(self.inner, enable);
+        }
+    }
+
+    pub fn set_range_merge(&mut self, enable: bool) {
+        unsafe {
+            crocksdb_ffi::ctitandb_options_set_range_merge(self.inner, enable);
+        }
+    }
+
+    pub fn set_max_sorted_runs(&mut self, size: i32) {
+        unsafe {
+            crocksdb_ffi::ctitandb_options_set_max_sorted_runs(self.inner, size);
         }
     }
 
