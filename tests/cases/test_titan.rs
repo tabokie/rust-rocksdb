@@ -147,31 +147,31 @@ fn test_titandb() {
     assert_eq!(db.get_options_cf(cf1).get_num_levels(), 4);
 
     let mut iter = db.iter();
-    iter.seek(SeekKey::Start);
+    iter.seek(SeekKey::Start).unwrap();
     for i in 0..n {
         for j in 0..n {
             let k = (i * n + j) as u8;
             let v = vec![k; (j + 1) as usize];
             assert_eq!(db.get(&[k]).unwrap().unwrap(), &v);
-            assert!(iter.valid());
+            assert!(iter.valid().unwrap());
             assert_eq!(iter.key(), &[k]);
             assert_eq!(iter.value(), v.as_slice());
-            iter.next();
+            iter.next().unwrap();
         }
     }
 
     let mut readopts = ReadOptions::new();
     readopts.set_titan_key_only(true);
     iter = db.iter_opt(readopts);
-    iter.seek(SeekKey::Start);
+    iter.seek(SeekKey::Start).unwrap();
     for i in 0..n {
         for j in 0..n {
             let k = (i * n + j) as u8;
             let v = vec![k; (j + 1) as usize];
             assert_eq!(db.get(&[k]).unwrap().unwrap(), &v);
-            assert!(iter.valid());
+            assert!(iter.valid().unwrap());
             assert_eq!(iter.key(), &[k]);
-            iter.next();
+            iter.next().unwrap();
         }
     }
 
@@ -179,20 +179,43 @@ fn test_titandb() {
     readopts = ReadOptions::new();
     readopts.set_titan_key_only(true);
     iter = db.iter_cf_opt(&cf_handle, readopts);
-    iter.seek(SeekKey::Start);
+    iter.seek(SeekKey::Start).unwrap();
     for i in 0..n {
         for j in 0..n {
             let k = (i * n + j) as u8;
             let v = vec![k; (j + 1) as usize];
             assert_eq!(db.get(&[k]).unwrap().unwrap(), &v);
-            assert!(iter.valid());
+            assert!(iter.valid().unwrap());
             assert_eq!(iter.key(), &[k]);
-            iter.next();
+            iter.next().unwrap();
         }
     }
 
     let num_entries = n as u32 * max_value_size as u32;
     check_table_properties(&db, num_entries / 2, num_entries);
+}
+
+#[test]
+fn test_titan_sequence_number() {
+    let path = tempdir_with_prefix("test_titan_sequence_number");
+
+    let tdb_path = path.path().join("titandb");
+    let mut tdb_opts = TitanDBOptions::new();
+    tdb_opts.set_dirname(tdb_path.to_str().unwrap());
+
+    let mut opts = DBOptions::new();
+    opts.create_if_missing(true);
+    opts.set_titandb_options(&tdb_opts);
+    let db = DB::open(opts, path.path().to_str().unwrap()).unwrap();
+
+    let snap = db.snapshot();
+    let snap_seq = snap.get_sequence_number();
+    let seq1 = db.get_latest_sequence_number();
+    assert_eq!(snap_seq, seq1);
+
+    db.put(b"key", b"value").unwrap();
+    let seq2 = db.get_latest_sequence_number();
+    assert!(seq2 > seq1);
 }
 
 #[test]
@@ -269,22 +292,22 @@ fn test_titan_delete_files_in_ranges() {
     let mut readopts = ReadOptions::new();
     readopts.set_titan_key_only(true);
     let mut iter = db.iter_cf_opt(&cf_handle, readopts);
-    iter.seek(SeekKey::Start);
+    iter.seek(SeekKey::Start).unwrap();
     for i in 6..9 {
-        assert!(iter.valid());
+        assert!(iter.valid().unwrap());
         let k = format!("key{}", i);
         assert_eq!(iter.key(), k.as_bytes());
-        iter.next();
+        iter.next().unwrap();
     }
-    assert!(!iter.valid());
+    assert!(!iter.valid().unwrap());
 
     // Delete the last file.
     let ranges = vec![Range::new(b"key6", b"key8")];
     db.delete_files_in_ranges_cf(cf_handle, &ranges, true)
         .unwrap();
     let mut iter = db.iter();
-    iter.seek(SeekKey::Start);
-    assert!(!iter.valid());
+    iter.seek(SeekKey::Start).unwrap();
+    assert!(!iter.valid().unwrap());
 }
 
 #[test]
