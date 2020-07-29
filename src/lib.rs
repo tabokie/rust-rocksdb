@@ -23,6 +23,9 @@ extern crate libc;
 pub extern crate librocksdb_sys;
 #[cfg(test)]
 extern crate tempfile;
+#[cfg(test)]
+#[macro_use]
+extern crate lazy_static;
 
 pub use compaction_filter::{
     new_compaction_filter, new_compaction_filter_factory, new_compaction_filter_raw,
@@ -57,6 +60,9 @@ pub use rocksdb_options::{
     WriteOptions,
 };
 pub use slice_transform::SliceTransform;
+pub use sst_partitioner::{
+    SstPartitioner, SstPartitionerContext, SstPartitionerFactory, SstPartitionerState,
+};
 pub use table_filter::TableFilter;
 pub use table_properties::{
     TableProperties, TablePropertiesCollection, TablePropertiesCollectionView,
@@ -81,6 +87,7 @@ mod perf_context;
 pub mod rocksdb;
 pub mod rocksdb_options;
 mod slice_transform;
+pub mod sst_partitioner;
 mod table_filter;
 mod table_properties;
 mod table_properties_collector;
