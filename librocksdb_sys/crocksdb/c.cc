@@ -15,7 +15,6 @@
 
 #include "db/column_family.h"
 #include "rocksdb/cache.h"
-#include "rocksdb/cloud/cloud_env_options.h"
 #include "rocksdb/compaction_filter.h"
 #include "rocksdb/comparator.h"
 #include "rocksdb/convenience.h"
@@ -116,8 +115,6 @@ using rocksdb::NewEncryptedEnv;
 using rocksdb::NewGenericRateLimiter;
 using rocksdb::NewLRUCache;
 using rocksdb::Options;
-using rocksdb::PartitionerRequest;
-using rocksdb::PartitionerResult;
 using rocksdb::PinnableSlice;
 using rocksdb::RandomAccessFile;
 using rocksdb::Range;
@@ -183,9 +180,6 @@ using rocksdb::titandb::TitanDB;
 using rocksdb::titandb::TitanDBOptions;
 using rocksdb::titandb::TitanOptions;
 using rocksdb::titandb::TitanReadOptions;
-
-using rocksdb::CloudEnv;
-using rocksdb::CloudEnvOptions;
 
 using rocksdb::MemoryAllocator;
 
@@ -628,10 +622,6 @@ struct crocksdb_universal_compaction_options_t {
   rocksdb::CompactionOptionsUniversal* rep;
 };
 
-struct crocksdb_writebatch_iterator_t {
-  rocksdb::WriteBatch::Iterator* rep;
-};
-
 #ifdef OPENSSL
 struct crocksdb_file_encryption_info_t {
   FileEncryptionInfo* rep;
@@ -646,14 +636,12 @@ struct crocksdb_sst_partitioner_t {
   std::unique_ptr<SstPartitioner> rep;
 };
 
-struct crocksdb_sst_partitioner_request_t {
-  PartitionerRequest* rep;
-  Slice prev_user_key;
-  Slice current_user_key;
-};
-
 struct crocksdb_sst_partitioner_context_t {
   SstPartitioner::Context* rep;
+};
+
+struct crocksdb_sst_partitioner_state_t {
+  SstPartitioner::State* rep;
 };
 
 struct crocksdb_sst_partitioner_factory_t {
@@ -1718,67 +1706,22 @@ void crocksdb_writebatch_iterate(crocksdb_writebatch_t* b, void* state,
                                              const char* v, size_t vlen),
                                  void (*deleted)(void*, const char* k,
                                                  size_t klen)) {
-  class HandlerWrapper : public WriteBatch::Handler {
+  class H : public WriteBatch::Handler {
    public:
     void* state_;
     void (*put_)(void*, const char* k, size_t klen, const char* v, size_t vlen);
     void (*deleted_)(void*, const char* k, size_t klen);
-    void Put(const Slice& key, const Slice& value) override {
+    virtual void Put(const Slice& key, const Slice& value) override {
       (*put_)(state_, key.data(), key.size(), value.data(), value.size());
     }
-    void Delete(const Slice& key) override {
+    virtual void Delete(const Slice& key) override {
       (*deleted_)(state_, key.data(), key.size());
     }
   };
-  HandlerWrapper handler;
+  H handler;
   handler.state_ = state;
   handler.put_ = put;
   handler.deleted_ = deleted;
-  b->rep.Iterate(&handler);
-}
-
-void crocksdb_writebatch_iterate_cf(
-    crocksdb_writebatch_t* b, void* state,
-    void (*put)(void*, const char* k, size_t klen, const char* v, size_t vlen),
-    void (*put_cf)(void*, uint32_t cf, const char* k, size_t klen,
-                   const char* v, size_t vlen),
-    void (*deleted)(void*, const char* k, size_t klen),
-    void (*deleted_cf)(void*, uint32_t cf, const char* k, size_t klen)) {
-  class HandlerWrapper : public WriteBatch::Handler {
-   public:
-    void* state_;
-    void (*put_)(void*, const char* k, size_t klen, const char* v, size_t vlen);
-    void (*put_cf_)(void*, uint32_t cf, const char* k, size_t klen,
-                    const char* v, size_t vlen);
-    void (*deleted_)(void*, const char* k, size_t klen);
-    void (*deleted_cf_)(void*, uint32_t cf, const char* k, size_t klen);
-
-    void Put(const Slice& key, const Slice& value) override {
-      (*put_)(state_, key.data(), key.size(), value.data(), value.size());
-    }
-
-    Status PutCF(uint32_t column_family_id, const Slice& key,
-                 const Slice& value) override {
-      (*put_cf_)(state_, column_family_id, key.data(), key.size(), value.data(),
-                 value.size());
-      return Status::OK();
-    }
-
-    void Delete(const Slice& key) override {
-      (*deleted_)(state_, key.data(), key.size());
-    }
-
-    Status DeleteCF(uint32_t column_family_id, const Slice& key) override {
-      (*deleted_cf_)(state_, column_family_id, key.data(), key.size());
-      return Status::OK();
-    }
-  };
-  HandlerWrapper handler;
-  handler.state_ = state;
-  handler.put_ = put;
-  handler.put_cf_ = put_cf;
-  handler.deleted_ = deleted;
-  handler.deleted_cf_ = deleted_cf;
   b->rep.Iterate(&handler);
 }
 
@@ -1799,76 +1742,6 @@ void crocksdb_writebatch_pop_save_point(crocksdb_writebatch_t* b,
 void crocksdb_writebatch_rollback_to_save_point(crocksdb_writebatch_t* b,
                                                 char** errptr) {
   SaveError(errptr, b->rep.RollbackToSavePoint());
-}
-
-void crocksdb_writebatch_set_content(crocksdb_writebatch_t* b, const char* data,
-                                     size_t dlen) {
-  rocksdb::WriteBatchInternal::SetContents(&b->rep, Slice(data, dlen));
-}
-
-void crocksdb_writebatch_append_content(crocksdb_writebatch_t* dest,
-                                        const char* data, size_t dlen) {
-  rocksdb::WriteBatchInternal::AppendContents(&dest->rep, Slice(data, dlen));
-}
-
-int crocksdb_writebatch_ref_count(const char* data, size_t dlen) {
-  Slice s(data, dlen);
-  rocksdb::WriteBatch::WriteBatchRef ref(s);
-  return ref.Count();
-}
-
-crocksdb_writebatch_iterator_t* crocksdb_writebatch_ref_iterator_create(
-    const char* data, size_t dlen) {
-  Slice input(data, dlen);
-  rocksdb::WriteBatch::WriteBatchRef ref(input);
-  auto it = new crocksdb_writebatch_iterator_t;
-  it->rep = ref.NewIterator();
-  it->rep->SeekToFirst();
-  return it;
-}
-
-crocksdb_writebatch_iterator_t* crocksdb_writebatch_iterator_create(
-    crocksdb_writebatch_t* dest) {
-  auto it = new crocksdb_writebatch_iterator_t;
-  it->rep = dest->rep.NewIterator();
-  it->rep->SeekToFirst();
-  return it;
-}
-
-void crocksdb_writebatch_iterator_destroy(crocksdb_writebatch_iterator_t* it) {
-  delete it->rep;
-  delete it;
-}
-
-unsigned char crocksdb_writebatch_iterator_valid(
-    crocksdb_writebatch_iterator_t* it) {
-  return it->rep->Valid();
-}
-
-void crocksdb_writebatch_iterator_next(crocksdb_writebatch_iterator_t* it) {
-  it->rep->Next();
-}
-
-const char* crocksdb_writebatch_iterator_key(crocksdb_writebatch_iterator_t* it,
-                                             size_t* klen) {
-  *klen = it->rep->Key().size();
-  return it->rep->Key().data();
-}
-
-const char* crocksdb_writebatch_iterator_value(
-    crocksdb_writebatch_iterator_t* it, size_t* klen) {
-  *klen = it->rep->Value().size();
-  return it->rep->Value().data();
-}
-
-int crocksdb_writebatch_iterator_value_type(
-    crocksdb_writebatch_iterator_t* it) {
-  return static_cast<int>(it->rep->GetValueType());
-}
-
-uint32_t crocksdb_writebatch_iterator_column_family_id(
-    crocksdb_writebatch_iterator_t* it) {
-  return it->rep->GetColumnFamilyId();
 }
 
 crocksdb_block_based_table_options_t* crocksdb_block_based_options_create() {
@@ -5250,26 +5123,6 @@ uint64_t crocksdb_perf_context_block_read_time(crocksdb_perf_context_t* ctx) {
   return ctx->rep.block_read_time;
 }
 
-uint64_t crocksdb_perf_context_block_cache_index_hit_count(
-    crocksdb_perf_context_t* ctx) {
-  return ctx->rep.block_cache_index_hit_count;
-}
-
-uint64_t crocksdb_perf_context_index_block_read_count(
-    crocksdb_perf_context_t* ctx) {
-  return ctx->rep.index_block_read_count;
-}
-
-uint64_t crocksdb_perf_context_block_cache_filter_hit_count(
-    crocksdb_perf_context_t* ctx) {
-  return ctx->rep.block_cache_filter_hit_count;
-}
-
-uint64_t crocksdb_perf_context_filter_block_read_count(
-    crocksdb_perf_context_t* ctx) {
-  return ctx->rep.filter_block_read_count;
-}
-
 uint64_t crocksdb_perf_context_block_checksum_time(
     crocksdb_perf_context_t* ctx) {
   return ctx->rep.block_checksum_time;
@@ -5578,25 +5431,6 @@ uint64_t crocksdb_perf_context_env_new_logger_nanos(
   return ctx->rep.env_new_logger_nanos;
 }
 
-uint64_t crocksdb_perf_context_get_cpu_nanos(crocksdb_perf_context_t* ctx) {
-  return ctx->rep.get_cpu_nanos;
-}
-
-uint64_t crocksdb_perf_context_iter_next_cpu_nanos(
-    crocksdb_perf_context_t* ctx) {
-  return ctx->rep.iter_next_cpu_nanos;
-}
-
-uint64_t crocksdb_perf_context_iter_prev_cpu_nanos(
-    crocksdb_perf_context_t* ctx) {
-  return ctx->rep.iter_next_cpu_nanos;
-}
-
-uint64_t crocksdb_perf_context_iter_seek_cpu_nanos(
-    crocksdb_perf_context_t* ctx) {
-  return ctx->rep.iter_next_cpu_nanos;
-}
-
 uint64_t crocksdb_perf_context_encrypt_data_nanos(
     crocksdb_perf_context_t* ctx) {
   return ctx->rep.encrypt_data_nanos;
@@ -5667,92 +5501,73 @@ uint64_t crocksdb_iostats_context_logger_nanos(
   return ctx->rep.logger_nanos;
 }
 
-crocksdb_sst_partitioner_request_t* crocksdb_sst_partitioner_request_create() {
-  auto* req = new crocksdb_sst_partitioner_request_t;
-  req->rep =
-      new PartitionerRequest(req->prev_user_key, req->current_user_key, 0);
-  return req;
+crocksdb_sst_partitioner_state_t* crocksdb_sst_partitioner_state_create() {
+  auto* rep = new SstPartitioner::State;
+  auto* state = new crocksdb_sst_partitioner_state_t;
+  state->rep = rep;
+  return state;
 }
 
-void crocksdb_sst_partitioner_request_destroy(
-    crocksdb_sst_partitioner_request_t* req) {
-  delete req->rep;
-  delete req;
+void crocksdb_sst_partitioner_state_destroy(
+    crocksdb_sst_partitioner_state_t* state) {
+  delete state->rep;
+  delete state;
 }
 
-const char* crocksdb_sst_partitioner_request_prev_user_key(
-    crocksdb_sst_partitioner_request_t* req, size_t* len) {
-  const Slice* prev_key = req->rep->prev_user_key;
-  *len = prev_key->size();
-  return prev_key->data();
+const char* crocksdb_sst_partitioner_state_next_key(
+    crocksdb_sst_partitioner_state_t* state, size_t* len) {
+  auto& next_key = state->rep->next_key;
+  *len = next_key.size();
+  return next_key.data();
 }
 
-const char* crocksdb_sst_partitioner_request_current_user_key(
-    crocksdb_sst_partitioner_request_t* req, size_t* len) {
-  const Slice* current_key = req->rep->current_user_key;
-  *len = current_key->size();
-  return current_key->data();
+uint64_t crocksdb_sst_partitioner_state_current_output_file_size(
+    crocksdb_sst_partitioner_state_t* state) {
+  return state->rep->current_output_file_size;
 }
 
-uint64_t crocksdb_sst_partitioner_request_current_output_file_size(
-    crocksdb_sst_partitioner_request_t* req) {
-  return req->rep->current_output_file_size;
+void crocksdb_sst_partitioner_state_set_next_key(
+    crocksdb_sst_partitioner_state_t* state, const char* next_key, size_t len) {
+  state->rep->next_key = Slice(next_key, len);
 }
 
-void crocksdb_sst_partitioner_request_set_prev_user_key(
-    crocksdb_sst_partitioner_request_t* req, const char* key, size_t len) {
-  req->prev_user_key = Slice(key, len);
-  req->rep->prev_user_key = &req->prev_user_key;
-}
-
-void crocksdb_sst_partitioner_request_set_current_user_key(
-    crocksdb_sst_partitioner_request_t* req, const char* key, size_t len) {
-  req->current_user_key = Slice(key, len);
-  req->rep->current_user_key = &req->current_user_key;
-}
-
-void crocksdb_sst_partitioner_request_set_current_output_file_size(
-    crocksdb_sst_partitioner_request_t* req,
+void crocksdb_sst_partitioner_state_set_current_output_file_size(
+    crocksdb_sst_partitioner_state_t* state,
     uint64_t current_output_file_size) {
-  req->rep->current_output_file_size = current_output_file_size;
+  state->rep->current_output_file_size = current_output_file_size;
 }
 
 struct crocksdb_sst_partitioner_impl_t : public SstPartitioner {
   void* underlying;
   void (*destructor)(void*);
   crocksdb_sst_partitioner_should_partition_cb should_partition_cb;
-  crocksdb_sst_partitioner_can_do_trivial_move_cb can_do_trivial_move_cb;
+  crocksdb_sst_partitioner_reset_cb reset_cb;
 
   virtual ~crocksdb_sst_partitioner_impl_t() { destructor(underlying); }
 
   const char* Name() const override { return "crocksdb_sst_partitioner_impl"; }
 
-  PartitionerResult ShouldPartition(
-      const PartitionerRequest& request) override {
-    crocksdb_sst_partitioner_request_t req;
-    req.rep = const_cast<PartitionerRequest*>(&request);
-    return static_cast<PartitionerResult>(
-        should_partition_cb(underlying, &req));
+  bool ShouldPartition(const State& partitioner_state) override {
+    crocksdb_sst_partitioner_state_t state;
+    state.rep = const_cast<State*>(&partitioner_state);
+    return should_partition_cb(underlying, &state);
   }
 
-  bool CanDoTrivialMove(const Slice& smallest_user_key,
-                        const Slice& largest_user_key) override {
-    return can_do_trivial_move_cb(
-        underlying, smallest_user_key.data(), smallest_user_key.size(),
-        largest_user_key.data(), largest_user_key.size());
+  void Reset(const Slice& key) override {
+    return reset_cb(underlying, key.data(), key.size());
   }
 };
 
 crocksdb_sst_partitioner_t* crocksdb_sst_partitioner_create(
     void* underlying, void (*destructor)(void*),
     crocksdb_sst_partitioner_should_partition_cb should_partition_cb,
-    crocksdb_sst_partitioner_can_do_trivial_move_cb can_do_trivial_move_cb) {
+    crocksdb_sst_partitioner_reset_cb reset_cb) {
   crocksdb_sst_partitioner_impl_t* sst_partitioner_impl =
       new crocksdb_sst_partitioner_impl_t;
   sst_partitioner_impl->underlying = underlying;
   sst_partitioner_impl->destructor = destructor;
   sst_partitioner_impl->should_partition_cb = should_partition_cb;
-  sst_partitioner_impl->can_do_trivial_move_cb = can_do_trivial_move_cb;
+  sst_partitioner_impl->reset_cb = reset_cb;
   crocksdb_sst_partitioner_t* sst_partitioner = new crocksdb_sst_partitioner_t;
   sst_partitioner->rep.reset(sst_partitioner_impl);
   return sst_partitioner;
@@ -5762,20 +5577,15 @@ void crocksdb_sst_partitioner_destroy(crocksdb_sst_partitioner_t* partitioner) {
   delete partitioner;
 }
 
-crocksdb_sst_partitioner_result_t crocksdb_sst_partitioner_should_partition(
+unsigned char crocksdb_sst_partitioner_should_partition(
     crocksdb_sst_partitioner_t* partitioner,
-    crocksdb_sst_partitioner_request_t* req) {
-  return static_cast<crocksdb_sst_partitioner_result_t>(
-      partitioner->rep->ShouldPartition(*req->rep));
+    crocksdb_sst_partitioner_state_t* state) {
+  return partitioner->rep->ShouldPartition(*state->rep);
 }
 
-unsigned char crocksdb_sst_partitioner_can_do_trivial_move(
-    crocksdb_sst_partitioner_t* partitioner, const char* smallest_user_key,
-    size_t smallest_user_key_len, const char* largest_user_key,
-    size_t largest_user_key_len) {
-  Slice smallest_key(smallest_user_key, smallest_user_key_len);
-  Slice largest_key(largest_user_key, largest_user_key_len);
-  return partitioner->rep->CanDoTrivialMove(smallest_key, largest_key);
+void crocksdb_sst_partitioner_reset(crocksdb_sst_partitioner_t* partitioner,
+                                    const char* key, size_t key_len) {
+  partitioner->rep->Reset(Slice(key, key_len));
 }
 
 crocksdb_sst_partitioner_context_t* crocksdb_sst_partitioner_context_create() {
@@ -5808,14 +5618,14 @@ int crocksdb_sst_partitioner_context_output_level(
 
 const char* crocksdb_sst_partitioner_context_smallest_key(
     crocksdb_sst_partitioner_context_t* context, size_t* key_len) {
-  auto& smallest_key = context->rep->smallest_user_key;
+  auto& smallest_key = context->rep->smallest_key;
   *key_len = smallest_key.size();
   return smallest_key.data();
 }
 
 const char* crocksdb_sst_partitioner_context_largest_key(
     crocksdb_sst_partitioner_context_t* context, size_t* key_len) {
-  auto& largest_key = context->rep->largest_user_key;
+  auto& largest_key = context->rep->largest_key;
   *key_len = largest_key.size();
   return largest_key.data();
 }
@@ -5840,13 +5650,13 @@ void crocksdb_sst_partitioner_context_set_output_level(
 void crocksdb_sst_partitioner_context_set_smallest_key(
     crocksdb_sst_partitioner_context_t* context, const char* smallest_key,
     size_t key_len) {
-  context->rep->smallest_user_key = Slice(smallest_key, key_len);
+  context->rep->smallest_key = std::string(smallest_key, key_len);
 }
 
 void crocksdb_sst_partitioner_context_set_largest_key(
     crocksdb_sst_partitioner_context_t* context, const char* largest_key,
     size_t key_len) {
-  context->rep->largest_user_key = Slice(largest_key, key_len);
+  context->rep->largest_key = std::string(largest_key, key_len);
 }
 
 struct crocksdb_sst_partitioner_factory_impl_t : public SstPartitionerFactory {
@@ -6300,49 +6110,4 @@ void ctitandb_delete_files_in_ranges_cf(
   SaveError(errptr, static_cast<TitanDB*>(db->rep)->DeleteFilesInRanges(
                         cf->rep, &ranges[0], num_ranges, include_end));
 }
-
-/* RocksDB Cloud */
-#ifdef USE_CLOUD
-struct crocksdb_cloud_envoptions_t {
-  CloudEnvOptions rep;
-};
-
-crocksdb_env_t* crocksdb_cloud_aws_env_create(
-    crocksdb_env_t* base_env, const char* src_cloud_bucket,
-    const char* src_cloud_object, const char* src_cloud_region,
-    const char* dest_cloud_bucket, const char* dest_cloud_object,
-    const char* dest_cloud_region, crocksdb_cloud_envoptions_t* cloud_options,
-    char** errptr) {
-  // Store a reference to a cloud env. A new cloud env object should be
-  // associated with every new cloud-db.
-  CloudEnv* cloud_env;
-
-  CloudEnv* cenv;
-  if (SaveError(errptr,
-                CloudEnv::NewAwsEnv(
-                    base_env->rep, src_cloud_bucket, src_cloud_object,
-                    src_cloud_region, dest_cloud_bucket, dest_cloud_object,
-                    dest_cloud_region, cloud_options->rep, nullptr, &cenv))) {
-    assert(cenv != nullptr);
-    return nullptr;
-  }
-  cloud_env = cenv;
-
-  crocksdb_env_t* result = new crocksdb_env_t;
-  result->rep = static_cast<Env*>(cloud_env);
-  result->block_cipher = nullptr;
-  result->encryption_provider = nullptr;
-  result->is_default = true;
-  return result;
-}
-
-crocksdb_cloud_envoptions_t* crocksdb_cloud_envoptions_create() {
-  crocksdb_cloud_envoptions_t* opt = new crocksdb_cloud_envoptions_t;
-  return opt;
-}
-
-void crocksdb_cloud_envoptions_destroy(crocksdb_cloud_envoptions_t* opt) {
-  delete opt;
-}
-#endif
 }  // end extern "C"

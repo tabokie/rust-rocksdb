@@ -35,7 +35,7 @@ pub fn test_column_family() {
                 panic!("could not create column family: {}", e);
             }
         }
-        assert_eq!(db.cf_names(), vec!["default", "cf1"]);
+        assert_eq!(db.cf_names(), vec!["cf1", "default"]);
     }
 
     // should fail to open db without specifying same column families
