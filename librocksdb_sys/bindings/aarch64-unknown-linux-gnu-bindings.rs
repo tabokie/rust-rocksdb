@@ -1876,6 +1876,8 @@ extern "C" {
         arg3: libc::c_int,
         arg4: libc::c_int,
         arg5: libc::c_int,
+        arg6: libc::c_int,
+        arg7: libc::c_int,
     );
 }
 extern "C" {

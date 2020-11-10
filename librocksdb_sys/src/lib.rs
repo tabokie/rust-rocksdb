@@ -697,6 +697,7 @@ extern "C" {
         strategy: c_int,
         max_dict_bytes: c_int,
         zstd_max_train_bytes: c_int,
+        parallel_threads: c_int,
     );
     pub fn crocksdb_options_set_bottommost_compression_options(
         options: *mut Options,
@@ -705,6 +706,7 @@ extern "C" {
         strategy: c_int,
         max_dict_bytes: c_int,
         zstd_max_train_bytes: c_int,
+        parallel_threads: c_int,
     );
     pub fn crocksdb_options_set_compression_per_level(
         options: *mut Options,
