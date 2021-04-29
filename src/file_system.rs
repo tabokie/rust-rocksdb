@@ -17,13 +17,13 @@ extern "C" fn file_system_inspector_destructor<T: FileSystemInspector>(ctx: *mut
     }
 }
 
-extern "C" fn file_system_inspector_read<T: FileSystemInspector>(
+extern "C" fn file_system_inspector_read_begin<T: FileSystemInspector>(
     ctx: *mut c_void,
     len: size_t,
     errptr: *mut *mut c_char,
 ) -> size_t {
     let file_system_inspector = unsafe { &*(ctx as *mut T) };
-    match file_system_inspector.read(len) {
+    match file_system_inspector.read_begin(len) {
         Ok(ret) => ret,
         Err(e) => {
             unsafe {
@@ -34,13 +34,21 @@ extern "C" fn file_system_inspector_read<T: FileSystemInspector>(
     }
 }
 
-extern "C" fn file_system_inspector_write<T: FileSystemInspector>(
+extern "C" fn file_system_inspector_read_end<T: FileSystemInspector>(
+    ctx: *mut c_void,
+    len: size_t,
+) {
+    let file_system_inspector = unsafe { &*(ctx as *mut T) };
+    file_system_inspector.read_end(len);
+}
+
+extern "C" fn file_system_inspector_write_begin<T: FileSystemInspector>(
     ctx: *mut c_void,
     len: size_t,
     errptr: *mut *mut c_char,
 ) -> size_t {
     let file_system_inspector = unsafe { &*(ctx as *mut T) };
-    match file_system_inspector.write(len) {
+    match file_system_inspector.write_begin(len) {
         Ok(ret) => ret,
         Err(e) => {
             unsafe {
@@ -49,6 +57,14 @@ extern "C" fn file_system_inspector_write<T: FileSystemInspector>(
             0
         }
     }
+}
+
+extern "C" fn file_system_inspector_write_end<T: FileSystemInspector>(
+    ctx: *mut c_void,
+    len: size_t,
+) {
+    let file_system_inspector = unsafe { &*(ctx as *mut T) };
+    file_system_inspector.write_end(len);
 }
 
 pub struct DBFileSystemInspector {
@@ -65,8 +81,10 @@ impl DBFileSystemInspector {
             crocksdb_ffi::crocksdb_file_system_inspector_create(
                 ctx,
                 file_system_inspector_destructor::<T>,
-                file_system_inspector_read::<T>,
-                file_system_inspector_write::<T>,
+                file_system_inspector_read_begin::<T>,
+                file_system_inspector_read_end::<T>,
+                file_system_inspector_write_begin::<T>,
+                file_system_inspector_write_end::<T>,
             )
         };
         DBFileSystemInspector { inner: instance }
@@ -83,13 +101,19 @@ impl Drop for DBFileSystemInspector {
 
 #[cfg(test)]
 impl FileSystemInspector for DBFileSystemInspector {
-    fn read(&self, len: usize) -> Result<usize, String> {
-        let ret = unsafe { ffi_try!(crocksdb_file_system_inspector_read(self.inner, len)) };
+    fn read_begin(&self, len: usize) -> Result<usize, String> {
+        let ret = unsafe { ffi_try!(crocksdb_file_system_inspector_read_begin(self.inner, len)) };
         Ok(ret)
     }
-    fn write(&self, len: usize) -> Result<usize, String> {
+    fn read_end(&self, len: usize) {
+        unsafe { ffi_try!(crocksdb_file_system_inspector_read(self.inner, len)) };
+    }
+    fn write_begin(&self, len: usize) -> Result<usize, String> {
         let ret = unsafe { ffi_try!(crocksdb_file_system_inspector_write(self.inner, len)) };
         Ok(ret)
+    }
+    fn write_end(&self, len: usize) {
+        unsafe { ffi_try!(crocksdb_file_system_inspector_read(self.inner, len)) };
     }
 }
 
@@ -113,7 +137,9 @@ mod test {
     struct TestFileSystemInspector {
         pub refill_bytes: usize,
         pub read_called: usize,
+        pub read_finished: usize,
         pub write_called: usize,
+        pub write_finished: usize,
         pub drop: Option<TestDrop>,
     }
 
@@ -122,14 +148,16 @@ mod test {
             TestFileSystemInspector {
                 refill_bytes: 0,
                 read_called: 0,
+                read_finished: 0,
                 write_called: 0,
+                write_finished: 0,
                 drop: None,
             }
         }
     }
 
     impl FileSystemInspector for Arc<Mutex<TestFileSystemInspector>> {
-        fn read(&self, len: usize) -> Result<usize, String> {
+        fn read_begin(&self, len: usize) -> Result<usize, String> {
             let mut inner = self.lock().unwrap();
             inner.read_called += 1;
             if len <= inner.refill_bytes {
@@ -138,7 +166,11 @@ mod test {
                 Err("request exceeds refill bytes".into())
             }
         }
-        fn write(&self, len: usize) -> Result<usize, String> {
+        fn read_end(&self, len: usize) {
+            let mut inner = self.lock().unwrap();
+            inner.read_finished += 1;
+        }
+        fn write_begin(&self, len: usize) -> Result<usize, String> {
             let mut inner = self.lock().unwrap();
             inner.write_called += 1;
             if len <= inner.refill_bytes {
@@ -146,6 +178,10 @@ mod test {
             } else {
                 Err("request exceeds refill bytes".into())
             }
+        }
+        fn write_end(&self, len: usize) {
+            let mut inner = self.lock().unwrap();
+            inner.write_finished += 1;
         }
     }
 
@@ -178,6 +214,8 @@ mod test {
         assert!(db_fs_inspector.write(8).is_err());
         let record = fs_inspector.lock().unwrap();
         assert_eq!(2, record.read_called);
+        assert_eq!(2, record.read_finished);
         assert_eq!(2, record.write_called);
+        assert_eq!(2, record.write_finished);
     }
 }

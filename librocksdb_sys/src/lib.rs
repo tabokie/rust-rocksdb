@@ -1730,20 +1730,30 @@ extern "C" {
     pub fn crocksdb_file_system_inspector_create(
         state: *mut c_void,
         destructor: extern "C" fn(*mut c_void),
-        read: extern "C" fn(*mut c_void, size_t, *mut *mut c_char) -> size_t,
-        write: extern "C" fn(*mut c_void, size_t, *mut *mut c_char) -> size_t,
+        read_begin: extern "C" fn(*mut c_void, size_t, *mut *mut c_char) -> size_t,
+        read_end: extern "C" fn(*mut c_void, size_t),
+        write_begin: extern "C" fn(*mut c_void, size_t, *mut *mut c_char) -> size_t,
+        write_end: extern "C" fn(*mut c_void, size_t),
     ) -> *mut DBFileSystemInspectorInstance;
     pub fn crocksdb_file_system_inspector_destroy(inspector: *mut DBFileSystemInspectorInstance);
-    pub fn crocksdb_file_system_inspector_read(
+    pub fn crocksdb_file_system_inspector_read_begin(
         inspector: *mut DBFileSystemInspectorInstance,
         len: size_t,
         errptr: *mut *mut c_char,
     ) -> size_t;
-    pub fn crocksdb_file_system_inspector_write(
+    pub fn crocksdb_file_system_inspector_read_end(
+        inspector: *mut DBFileSystemInspectorInstance,
+        len: size_t,
+    );
+    pub fn crocksdb_file_system_inspector_write_begin(
         inspector: *mut DBFileSystemInspectorInstance,
         len: size_t,
         errptr: *mut *mut c_char,
     ) -> size_t;
+    pub fn crocksdb_file_system_inspector_write_end(
+        inspector: *mut DBFileSystemInspectorInstance,
+        len: size_t,
+    );
 
     pub fn crocksdb_file_system_inspected_env_create(
         base_env: *mut DBEnv,

@@ -1664,24 +1664,34 @@ crocksdb_key_managed_encrypted_env_create(crocksdb_env_t*,
 
 /* FileSystemInspectedEnv */
 
-typedef size_t (*crocksdb_file_system_inspector_read_cb)(void* state,
-                                                         size_t len,
-                                                         char** errptr);
-typedef size_t (*crocksdb_file_system_inspector_write_cb)(void* state,
-                                                          size_t len,
-                                                          char** errptr);
+typedef size_t (*crocksdb_file_system_inspector_read_begin_cb)(void* state,
+                                                               size_t len,
+                                                               char** errptr);
+typedef void (*crocksdb_file_system_inspector_read_end_cb)(void* state,
+                                                           size_t len);
+typedef size_t (*crocksdb_file_system_inspector_write_begin_cb)(void* state,
+                                                                size_t len,
+                                                                char** errptr);
+typedef void (*crocksdb_file_system_inspector_write_end_cb)(void* state,
+                                                            size_t len);
 
 extern C_ROCKSDB_LIBRARY_API crocksdb_file_system_inspector_t*
 crocksdb_file_system_inspector_create(
     void* state, void (*destructor)(void*),
-    crocksdb_file_system_inspector_read_cb read,
-    crocksdb_file_system_inspector_write_cb write);
+    crocksdb_file_system_inspector_read_begin_cb read_begin,
+    crocksdb_file_system_inspector_read_end_cb read_end,
+    crocksdb_file_system_inspector_write_begin_cb write_begin,
+    crocksdb_file_system_inspector_write_end_cb write_end);
 extern C_ROCKSDB_LIBRARY_API void crocksdb_file_system_inspector_destroy(
     crocksdb_file_system_inspector_t*);
-extern C_ROCKSDB_LIBRARY_API size_t crocksdb_file_system_inspector_read(
+extern C_ROCKSDB_LIBRARY_API size_t crocksdb_file_system_inspector_read_begin(
     crocksdb_file_system_inspector_t* inspector, size_t len, char** errptr);
-extern C_ROCKSDB_LIBRARY_API size_t crocksdb_file_system_inspector_write(
+extern C_ROCKSDB_LIBRARY_API void crocksdb_file_system_inspector_read_end(
+    crocksdb_file_system_inspector_t* inspector, size_t len);
+extern C_ROCKSDB_LIBRARY_API size_t crocksdb_file_system_inspector_write_begin(
     crocksdb_file_system_inspector_t* inspector, size_t len, char** errptr);
+extern C_ROCKSDB_LIBRARY_API void crocksdb_file_system_inspector_write_end(
+    crocksdb_file_system_inspector_t* inspector, size_t len);
 
 extern C_ROCKSDB_LIBRARY_API crocksdb_env_t*
 crocksdb_file_system_inspected_env_create(crocksdb_env_t*,

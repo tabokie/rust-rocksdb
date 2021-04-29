@@ -4201,15 +4201,17 @@ crocksdb_env_t* crocksdb_key_managed_encrypted_env_create(
 struct crocksdb_file_system_inspector_impl_t : public FileSystemInspector {
   void* state;
   void (*destructor)(void*);
-  crocksdb_file_system_inspector_read_cb read;
-  crocksdb_file_system_inspector_write_cb write;
+  crocksdb_file_system_inspector_read_begin_cb read_begin;
+  crocksdb_file_system_inspector_read_end_cb read_end;
+  crocksdb_file_system_inspector_write_begin_cb write_begin;
+  crocksdb_file_system_inspector_write_end_cb write_end;
 
   virtual ~crocksdb_file_system_inspector_impl_t() { destructor(state); }
 
-  Status Read(size_t len, size_t* allowed) {
+  Status ReadBegin(size_t len, size_t* allowed) {
     assert(allowed);
     char* err = nullptr;
-    *allowed = read(state, len, &err);
+    *allowed = read_begin(state, len, &err);
     if (err) {
       Status s = Status::IOError(err);
       // malloc-ed by strdup
@@ -4220,10 +4222,14 @@ struct crocksdb_file_system_inspector_impl_t : public FileSystemInspector {
     }
   }
 
-  Status Write(size_t len, size_t* allowed) {
+  void ReadEnd(size_t len) {
+    read_end(state, len);
+  }
+
+  Status WriteBegin(size_t len, size_t* allowed) {
     assert(allowed);
     char* err = nullptr;
-    *allowed = write(state, len, &err);
+    *allowed = write_begin(state, len, &err);
     if (err) {
       Status s = Status::IOError(err);
       // malloc-ed by strdup
@@ -4232,19 +4238,27 @@ struct crocksdb_file_system_inspector_impl_t : public FileSystemInspector {
     } else {
       return Status::OK();
     }
+  }
+
+  void WriteEnd(size_t len) {
+    write_end(state, len);
   }
 };
 
 crocksdb_file_system_inspector_t* crocksdb_file_system_inspector_create(
     void* state, void (*destructor)(void*),
-    crocksdb_file_system_inspector_read_cb read,
-    crocksdb_file_system_inspector_write_cb write) {
+    crocksdb_file_system_inspector_read_begin_cb read_begin,
+    crocksdb_file_system_inspector_read_end_cb read_end,
+    crocksdb_file_system_inspector_write_begin_cb write_begin,
+    crocksdb_file_system_inspector_write_end_cb write_end) {
   std::shared_ptr<crocksdb_file_system_inspector_impl_t> inspector_impl =
       std::make_shared<crocksdb_file_system_inspector_impl_t>();
   inspector_impl->state = state;
   inspector_impl->destructor = destructor;
-  inspector_impl->read = read;
-  inspector_impl->write = write;
+  inspector_impl->read_begin = read_begin;
+  inspector_impl->read_end = read_end;
+  inspector_impl->write_begin = write_begin;
+  inspector_impl->write_end = write_end;
   crocksdb_file_system_inspector_t* inspector =
       new crocksdb_file_system_inspector_t;
   inspector->rep = inspector_impl;
@@ -4256,20 +4270,32 @@ void crocksdb_file_system_inspector_destroy(
   delete inspector;
 }
 
-size_t crocksdb_file_system_inspector_read(
+size_t crocksdb_file_system_inspector_read_begin(
     crocksdb_file_system_inspector_t* inspector, size_t len, char** errptr) {
   assert(inspector != nullptr && inspector->rep != nullptr);
   size_t allowed = 0;
-  SaveError(errptr, inspector->rep->Read(len, &allowed));
+  SaveError(errptr, inspector->rep->ReadBegin(len, &allowed));
   return allowed;
 }
 
-size_t crocksdb_file_system_inspector_write(
+void crocksdb_file_system_inspector_read_end(
+    crocksdb_file_system_inspector_t* inspector, size_t len) {
+  assert(inspector != nullptr && inspector->rep != nullptr);
+  inspector->rep->ReadEnd(len);
+}
+
+size_t crocksdb_file_system_inspector_write_begin(
     crocksdb_file_system_inspector_t* inspector, size_t len, char** errptr) {
   assert(inspector != nullptr && inspector->rep != nullptr);
   size_t allowed = 0;
-  SaveError(errptr, inspector->rep->Write(len, &allowed));
+  SaveError(errptr, inspector->rep->WriteBegin(len, &allowed));
   return allowed;
+}
+
+void crocksdb_file_system_inspector_write_end(
+    crocksdb_file_system_inspector_t* inspector, size_t len) {
+  assert(inspector != nullptr && inspector->rep != nullptr);
+  inspector->rep->WriteEnd(len);
 }
 
 crocksdb_env_t* crocksdb_file_system_inspected_env_create(
