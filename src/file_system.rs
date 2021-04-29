@@ -108,14 +108,14 @@ impl FileSystemInspector for DBFileSystemInspector {
         Ok(ret)
     }
     fn read_end(&self, len: usize) {
-        unsafe { ffi_try!(crocksdb_file_system_inspector_read_end(self.inner, len)) };
+        unsafe { crocksdb_file_system_inspector_read_end(self.inner, len) };
     }
     fn write_begin(&self, len: usize) -> Result<usize, String> {
         let ret = unsafe { ffi_try!(crocksdb_file_system_inspector_write_begin(self.inner, len)) };
         Ok(ret)
     }
     fn write_end(&self, len: usize) {
-        unsafe { ffi_try!(crocksdb_file_system_inspector_write_end(self.inner, len)) };
+        unsafe { crocksdb_file_system_inspector_write_end(self.inner, len) };
     }
 }
 
@@ -210,10 +210,12 @@ mod test {
             ..Default::default()
         }));
         let db_fs_inspector = DBFileSystemInspector::new(fs_inspector.clone());
-        assert_eq!(2, db_fs_inspector.read(2).unwrap());
-        assert!(db_fs_inspector.read(8).is_err());
-        assert_eq!(2, db_fs_inspector.write(2).unwrap());
-        assert!(db_fs_inspector.write(8).is_err());
+        assert_eq!(2, db_fs_inspector.read_begin(2).unwrap());
+        db_fs_inspector.read_end(2);
+        assert!(db_fs_inspector.read_begin(8).is_err());
+        assert_eq!(2, db_fs_inspector.write_begin(2).unwrap());
+        db_fs_inspector.write_end(2);
+        assert!(db_fs_inspector.write_begin(8).is_err());
         let record = fs_inspector.lock().unwrap();
         assert_eq!(2, record.read_called);
         assert_eq!(2, record.read_finished);
