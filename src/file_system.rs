@@ -108,14 +108,14 @@ impl FileSystemInspector for DBFileSystemInspector {
         Ok(ret)
     }
     fn read_end(&self, len: usize) {
-        unsafe { ffi_try!(crocksdb_file_system_inspector_read(self.inner, len)) };
+        unsafe { ffi_try!(crocksdb_file_system_inspector_read_end(self.inner, len)) };
     }
     fn write_begin(&self, len: usize) -> Result<usize, String> {
-        let ret = unsafe { ffi_try!(crocksdb_file_system_inspector_write(self.inner, len)) };
+        let ret = unsafe { ffi_try!(crocksdb_file_system_inspector_write_begin(self.inner, len)) };
         Ok(ret)
     }
     fn write_end(&self, len: usize) {
-        unsafe { ffi_try!(crocksdb_file_system_inspector_read(self.inner, len)) };
+        unsafe { ffi_try!(crocksdb_file_system_inspector_write_end(self.inner, len)) };
     }
 }
 
