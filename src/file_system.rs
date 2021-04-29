@@ -6,8 +6,10 @@ use libc::{c_char, c_void, size_t, strdup};
 
 // Inspect global IO flow. No per-file inspection for now.
 pub trait FileSystemInspector: Sync + Send {
-    fn read(&self, len: usize) -> Result<usize, String>;
-    fn write(&self, len: usize) -> Result<usize, String>;
+    fn read_begin(&self, len: usize) -> Result<usize, String>;
+    fn read_end(&self, len: usize);
+    fn write_begin(&self, len: usize) -> Result<usize, String>;
+    fn write_end(&self, len: usize);
 }
 
 extern "C" fn file_system_inspector_destructor<T: FileSystemInspector>(ctx: *mut c_void) {
