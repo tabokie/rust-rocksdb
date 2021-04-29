@@ -168,7 +168,7 @@ mod test {
                 Err("request exceeds refill bytes".into())
             }
         }
-        fn read_end(&self, len: usize) {
+        fn read_end(&self, _len: usize) {
             let mut inner = self.lock().unwrap();
             inner.read_finished += 1;
         }
@@ -181,7 +181,7 @@ mod test {
                 Err("request exceeds refill bytes".into())
             }
         }
-        fn write_end(&self, len: usize) {
+        fn write_end(&self, _len: usize) {
             let mut inner = self.lock().unwrap();
             inner.write_finished += 1;
         }
