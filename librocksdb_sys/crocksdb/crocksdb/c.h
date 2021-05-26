@@ -103,12 +103,14 @@ typedef struct crocksdb_block_based_table_options_t
     crocksdb_block_based_table_options_t;
 typedef struct crocksdb_cuckoo_table_options_t crocksdb_cuckoo_table_options_t;
 typedef struct crocksdb_randomfile_t crocksdb_randomfile_t;
+const uint64_t crocksdb_readoptions_t_size;
 typedef struct crocksdb_readoptions_t crocksdb_readoptions_t;
 typedef struct crocksdb_seqfile_t crocksdb_seqfile_t;
 typedef struct crocksdb_slicetransform_t crocksdb_slicetransform_t;
 typedef struct crocksdb_snapshot_t crocksdb_snapshot_t;
 typedef struct crocksdb_writablefile_t crocksdb_writablefile_t;
 typedef struct crocksdb_writebatch_t crocksdb_writebatch_t;
+const uint64_t crocksdb_writeoptions_t_size;
 typedef struct crocksdb_writeoptions_t crocksdb_writeoptions_t;
 typedef struct crocksdb_universal_compaction_options_t
     crocksdb_universal_compaction_options_t;

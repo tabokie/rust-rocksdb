@@ -234,11 +234,13 @@ struct crocksdb_flushoptions_t {
 struct crocksdb_fifo_compaction_options_t {
   CompactionOptionsFIFO rep;
 };
+
+const uint64_t crocksdb_readoptions_t_size = sizeof(crocksdb_readoptions_t);
 struct crocksdb_readoptions_t {
   ReadOptions rep;
-  Slice upper_bound;  // stack variable to set pointer to in ReadOptions
-  Slice lower_bound;
 };
+
+const uint64_t crocksdb_writeoptions_t_size = sizeof(crocksdb_writeoptions_t);
 struct crocksdb_writeoptions_t {
   WriteOptions rep;
 };

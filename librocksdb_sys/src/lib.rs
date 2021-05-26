@@ -921,6 +921,8 @@ extern "C" {
         error_if_log_file_exist: bool,
         err: *mut *mut c_char,
     ) -> *mut DBInstance;
+    #[no_mangle]
+    static crocksdb_writeoptions_t_size: const u64;
     pub fn crocksdb_writeoptions_create() -> *mut DBWriteOptions;
     pub fn crocksdb_writeoptions_destroy(writeopts: *mut DBWriteOptions);
     pub fn crocksdb_writeoptions_set_sync(writeopts: *mut DBWriteOptions, v: bool);

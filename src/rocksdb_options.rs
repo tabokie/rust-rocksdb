@@ -489,25 +489,12 @@ impl ReadOptions {
 }
 
 pub struct WriteOptions {
-    pub inner: *mut DBWriteOptions,
-}
-
-impl Drop for WriteOptions {
-    fn drop(&mut self) {
-        unsafe {
-            crocksdb_ffi::crocksdb_writeoptions_destroy(self.inner);
-        }
-    }
+    pub buffer: [u8; crocksdb_ffi::crocksdb_writeoptions_t_size],
 }
 
 impl Default for WriteOptions {
     fn default() -> WriteOptions {
-        let write_opts = unsafe { crocksdb_ffi::crocksdb_writeoptions_create() };
-        assert!(
-            !write_opts.is_null(),
-            "Could not create rocksdb write options"
-        );
-        WriteOptions { inner: write_opts }
+        WriteOptions { buffer: [0; crocksdb_ffi::crocksdb_writeoptions_t_size] }
     }
 }
 
@@ -518,35 +505,35 @@ impl WriteOptions {
 
     pub fn set_sync(&mut self, sync: bool) {
         unsafe {
-            crocksdb_ffi::crocksdb_writeoptions_set_sync(self.inner, sync);
+            crocksdb_ffi::crocksdb_writeoptions_set_sync(self.buffer as *mut u8, sync);
         }
     }
 
     pub fn disable_wal(&mut self, disable: bool) {
         unsafe {
             if disable {
-                crocksdb_ffi::crocksdb_writeoptions_disable_wal(self.inner, 1);
+                crocksdb_ffi::crocksdb_writeoptions_disable_wal(self.buffer as *mut u8, 1);
             } else {
-                crocksdb_ffi::crocksdb_writeoptions_disable_wal(self.inner, 0);
+                crocksdb_ffi::crocksdb_writeoptions_disable_wal(self.buffer as *mut u8, 0);
             }
         }
     }
 
     pub fn set_ignore_missing_column_families(&mut self, v: bool) {
         unsafe {
-            crocksdb_ffi::crocksdb_writeoptions_set_ignore_missing_column_families(self.inner, v);
+            crocksdb_ffi::crocksdb_writeoptions_set_ignore_missing_column_families(self.buffer as *mut u8, v);
         }
     }
 
     pub fn set_no_slowdown(&mut self, v: bool) {
         unsafe {
-            crocksdb_ffi::crocksdb_writeoptions_set_no_slowdown(self.inner, v);
+            crocksdb_ffi::crocksdb_writeoptions_set_no_slowdown(self.buffer as *mut u8, v);
         }
     }
 
     pub fn set_low_pri(&mut self, v: bool) {
         unsafe {
-            crocksdb_ffi::crocksdb_writeoptions_set_low_pri(self.inner, v);
+            crocksdb_ffi::crocksdb_writeoptions_set_low_pri(self.buffer as *mut u8, v);
         }
     }
 }
