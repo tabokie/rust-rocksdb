@@ -489,12 +489,12 @@ impl ReadOptions {
 }
 
 pub struct WriteOptions {
-    pub buffer: [u8; crocksdb_ffi::crocksdb_writeoptions_t_size],
+    pub buffer: [u8; crocksdb_ffi::crocksdb_writeoptions_t_size as usize],
 }
 
 impl Default for WriteOptions {
     fn default() -> WriteOptions {
-        WriteOptions { buffer: [0; crocksdb_ffi::crocksdb_writeoptions_t_size] }
+        WriteOptions { buffer: [0; crocksdb_ffi::crocksdb_writeoptions_t_size as usize] }
     }
 }
 
